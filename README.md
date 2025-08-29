@@ -5,11 +5,11 @@
 ## 仿真环境展示
 
 ### CityPark仿真场景
-![CityPark场景全景](images/scene_overview.jpg)
+![CityPark场景全景](images/ScreenShot00002.png)
 *城市公园仿真环境，包含湖泊、建筑物和绿化区域，为多无人机协同探索提供复杂的测试场景*
 
 ### 开发环境界面
-![UE4开发界面](images/simulation_interface.jpg)
+![UE4开发界面](images/ScreenShot00003.png)
 *Unreal Engine 4编辑器界面，显示无人机传感器数据（深度图、分割图）和实时仿真状态*
 
 ## 项目概述
