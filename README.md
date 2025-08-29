@@ -4,7 +4,7 @@
 
 ## 项目概述
 
-本项目将原始的基于ROS的RACER系统重构为基于AirSim的Python实现，适用于Windows平台部署和AirSim-UE仿真环境。
+将原始的基于ROS的RACER系统重构为基于AirSim的Python实现，适用于Windows平台部署和AirSim-UE仿真环境。
 
 ## 环境要求
 
