@@ -129,8 +129,9 @@ class FrontierFinder:
             # Calculate cluster centroid
             centroid_grid = np.mean(cluster, axis=0)
             
-            # Convert to world coordinates
-            centroid_world = self.grid_map.grid_to_world(centroid_grid)
+            # Convert to world coordinates - add z coordinate
+            centroid_grid_3d = np.array([centroid_grid[0], centroid_grid[1], self.grid_map.size_z//2])
+            centroid_world = self.grid_map.grid_to_world(centroid_grid_3d)
             
             # Check if within search radius
             if distance_3d(robot_position, centroid_world) <= search_radius:

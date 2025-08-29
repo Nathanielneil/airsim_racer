@@ -160,14 +160,30 @@ class ExplorationManager:
             # Get current position and orientation
             pos = np.array(self.airsim_client.get_position())
             
-            # Update grid map with sensor data
-            if len(lidar_points) > 0:
-                self.grid_map.update_with_lidar(pos, lidar_points)
+            # Debug output
+            if hasattr(self, '_debug_counter'):
+                self._debug_counter += 1
+            else:
+                self._debug_counter = 1
             
-            # Update with depth camera
-            if "front_center" in images:
+            if self._debug_counter % 10 == 1:  # Print every 10th update
+                print(f"Map update {self._debug_counter}: pos=[{pos[0]:.2f}, {pos[1]:.2f}, {pos[2]:.2f}]")
+            
+            # Update grid map with sensor data
+            if lidar_points is not None and len(lidar_points) > 0:
+                self.grid_map.update_with_lidar(pos, lidar_points)
+                if self._debug_counter % 10 == 1:
+                    print(f"  LiDAR: {len(lidar_points)} points")
+            
+            # Update with depth camera (primary sensor)
+            if images and "front_center" in images:
                 depth_img = images["front_center"]["depth"]
-                self.grid_map.update_with_depth_camera(pos, depth_img)
+                if depth_img is not None:
+                    self.grid_map.update_with_depth_camera(pos, depth_img, camera_fov=90.0, max_range=30.0)
+                    if self._debug_counter % 10 == 1:
+                        valid_pixels = np.sum(depth_img > 0.1)
+                        depth_range = f"{np.min(depth_img):.2f} - {np.max(depth_img):.2f}"
+                        print(f"  Camera: {depth_img.shape}, {valid_pixels} valid pixels, range: {depth_range}m")
                 
         except Exception as e:
             print(f"Error updating occupancy map: {e}")
@@ -192,7 +208,15 @@ class ExplorationManager:
         """Find exploration frontiers"""
         try:
             current_pos = self.swarm_states[self.config.drone_id].position
-            self.local_frontiers = self.frontier_finder.find_frontiers(current_pos)
+            self.local_frontiers = self.frontier_finder.find_frontiers(current_pos, search_radius=8.0)
+            
+            # Debug output every 10 updates
+            if hasattr(self, '_debug_counter') and self._debug_counter % 10 == 1:
+                print(f"  Frontiers: {len(self.local_frontiers)} found")
+                if len(self.local_frontiers) > 0:
+                    for i, frontier in enumerate(self.local_frontiers[:3]):
+                        print(f"    {i+1}: [{frontier[0]:.2f}, {frontier[1]:.2f}, {frontier[2]:.2f}]")
+                        
         except Exception as e:
             print(f"Error finding frontiers: {e}")
             self.local_frontiers = []

@@ -36,22 +36,22 @@ def create_exploration_config(yaml_config: dict, drone_id: int) -> ExplorationCo
     config = ExplorationConfig(
         drone_num=exp_config.get('drone_num', 1),
         drone_id=drone_id,
-        max_exploration_time=exp_config.get('max_exploration_time', 600.0),
+        max_exploration_time=exp_config.get('max_exploration_time', 120.0),  # Shorter timeout
         exploration_bounds_min=np.array([
-            bounds.get('min_x', -50.0),
-            bounds.get('min_y', -50.0), 
+            bounds.get('min_x', -10.0),  # Smaller bounds for depth camera range
+            bounds.get('min_y', -10.0), 
             bounds.get('min_z', 0.0)
         ]),
         exploration_bounds_max=np.array([
-            bounds.get('max_x', 50.0),
-            bounds.get('max_y', 50.0),
-            bounds.get('max_z', 10.0)
+            bounds.get('max_x', 10.0),
+            bounds.get('max_y', 10.0),
+            bounds.get('max_z', 5.0)
         ]),
-        safety_distance=exp_config.get('safety_distance', 3.0),
-        frontier_cluster_tolerance=exp_config.get('frontier', {}).get('cluster_tolerance', 2.0),
-        min_frontier_size=exp_config.get('frontier', {}).get('min_frontier_size', 10),
-        communication_range=exp_config.get('communication_range', 100.0),
-        update_frequency=exp_config.get('update_frequency', 10.0)
+        safety_distance=exp_config.get('safety_distance', 2.0),
+        frontier_cluster_tolerance=exp_config.get('frontier', {}).get('cluster_tolerance', 1.0),
+        min_frontier_size=exp_config.get('frontier', {}).get('min_frontier_size', 3),  # Smaller minimum
+        communication_range=exp_config.get('communication_range', 50.0),
+        update_frequency=exp_config.get('update_frequency', 5.0)  # Lower frequency for debugging
     )
     
     return config

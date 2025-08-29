@@ -75,13 +75,19 @@ class AirSimClient:
                                                     depth_response.height)
             depth_img = np.array(depth_img)
             
+            # Scale depth values from normalized (0-1) to actual meters
+            # AirSim normalizes depth based on camera settings
+            # Convert to actual distance in meters (up to 50m based on camera config)
+            depth_img = depth_img * 50.0  # Scale to actual meters
+            
             images[camera_name] = {
                 'rgb': rgb_img,
                 'depth': depth_img,
                 'camera_info': {
                     'width': rgb_response.width,
                     'height': rgb_response.height,
-                    'fov': 90.0  # Default FOV
+                    'fov': 90.0,  # Default FOV
+                    'max_depth': 50.0  # Maximum depth range
                 }
             }
         

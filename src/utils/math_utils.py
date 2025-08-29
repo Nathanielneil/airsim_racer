@@ -14,9 +14,9 @@ def euler_to_quaternion(roll: float, pitch: float, yaw: float) -> Tuple[float, f
     return transforms3d.euler.euler2quat(roll, pitch, yaw)
 
 
-def distance_3d(p1: Tuple[float, float, float], p2: Tuple[float, float, float]) -> float:
+def distance_3d(p1: np.ndarray, p2: np.ndarray) -> float:
     """Calculate 3D Euclidean distance between two points"""
-    return math.sqrt(sum((a - b) ** 2 for a, b in zip(p1, p2)))
+    return np.linalg.norm(p1 - p2)
 
 
 def normalize_vector(vector: np.ndarray) -> np.ndarray:
