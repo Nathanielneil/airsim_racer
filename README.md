@@ -30,7 +30,7 @@ pip install -r requirements.txt
 
 ### 2. AirSim配置
 
-确保您的AirSim设置文件配置正确。参考 `config/airsim_settings.json`。
+确保AirSim设置文件配置正确。参考 `config/airsim_settings.json`。
 
 ### 3. 运行系统
 
@@ -49,7 +49,7 @@ python main.py
 - `scripts/` - 脚本工具
 - `tests/` - 测试代码
 
-## 原项目信息
+## 项目信息
 
 本项目基于SYSU-STAR的RACER项目重构：
 - 原项目地址：https://github.com/SYSU-STAR/RACER
