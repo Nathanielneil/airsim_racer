@@ -148,7 +148,7 @@
         "Height": 480,
         "FOV_Degrees": 90,
         "NearPlaneDistance": 0.02,
-        "FarPlaneDistance": 50.0
+        "FarPlaneDistance": 10.0
       }
     ]
   },

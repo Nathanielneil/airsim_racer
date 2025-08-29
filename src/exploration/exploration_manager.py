@@ -179,7 +179,7 @@ class ExplorationManager:
             if images and "front_center" in images:
                 depth_img = images["front_center"]["depth"]
                 if depth_img is not None:
-                    self.grid_map.update_with_depth_camera(pos, depth_img, camera_fov=90.0, max_range=30.0)
+                    self.grid_map.update_with_depth_camera(pos, depth_img, camera_fov=90.0, max_range=10.0)
                     if self._debug_counter % 10 == 1:
                         valid_pixels = np.sum(depth_img > 0.1)
                         depth_range = f"{np.min(depth_img):.2f} - {np.max(depth_img):.2f}"

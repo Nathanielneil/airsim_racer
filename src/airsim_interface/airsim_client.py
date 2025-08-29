@@ -77,8 +77,8 @@ class AirSimClient:
             
             # Scale depth values from normalized (0-1) to actual meters
             # AirSim normalizes depth based on camera settings
-            # Convert to actual distance in meters (up to 50m based on camera config)
-            depth_img = depth_img * 50.0  # Scale to actual meters
+            # Convert to actual distance in meters (up to 10m based on camera config)
+            depth_img = depth_img * 10.0  # Scale to actual meters
             
             images[camera_name] = {
                 'rgb': rgb_img,
@@ -87,7 +87,7 @@ class AirSimClient:
                     'width': rgb_response.width,
                     'height': rgb_response.height,
                     'fov': 90.0,  # Default FOV
-                    'max_depth': 50.0  # Maximum depth range
+                    'max_depth': 10.0  # Maximum depth range
                 }
             }
         
