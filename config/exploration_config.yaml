@@ -1,0 +1,68 @@
+# AirSim RACER Configuration
+
+# Exploration parameters
+exploration:
+  drone_num: 3
+  drone_id: 0  # Will be overridden per drone instance
+  max_exploration_time: 600.0  # seconds
+  update_frequency: 10.0  # Hz
+  
+  # Exploration bounds (world coordinates)
+  bounds:
+    min_x: -50.0
+    min_y: -50.0
+    min_z: 0.0
+    max_x: 50.0
+    max_y: 50.0
+    max_z: 10.0
+  
+  # Safety parameters
+  safety_distance: 3.0  # minimum distance between drones
+  obstacle_inflation_radius: 1.0
+  
+  # Frontier detection
+  frontier:
+    cluster_tolerance: 2.0
+    min_frontier_size: 10
+    frontier_threshold: 0.1
+    
+  # Communication
+  communication_range: 100.0
+  message_timeout: 5.0
+
+# Grid mapping parameters
+mapping:
+  resolution: 0.2  # meters per grid cell
+  occupancy_threshold: 0.65
+  free_threshold: 0.25
+  
+# Path planning parameters
+planning:
+  max_velocity: 5.0  # m/s
+  max_acceleration: 2.0  # m/s^2
+  path_resolution: 0.5  # meters
+  smoothing_iterations: 3
+  
+# AirSim connection parameters  
+airsim:
+  ip_address: "127.0.0.1"
+  port: 41451
+  timeout: 30.0
+  
+# Sensor parameters
+sensors:
+  camera:
+    fov_degrees: 90.0
+    max_range: 15.0
+    depth_noise_std: 0.01
+    
+  lidar:
+    max_range: 20.0
+    update_rate: 10.0  # Hz
+    
+# Visualization parameters
+visualization:
+  show_frontiers: true
+  show_path: true
+  show_occupancy_grid: true
+  grid_alpha: 0.7

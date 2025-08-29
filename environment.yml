@@ -1,0 +1,28 @@
+name: airsim_racer
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.9
+  - pip
+  - numpy
+  - scipy
+  - matplotlib
+  - opencv
+  - pillow
+  - pyyaml
+  - jupyter
+  - ipython
+  - pandas
+  - scikit-learn
+  - tqdm
+  - pip:
+    - airsim
+    - msgpack-rpc-python
+    - transforms3d
+    - open3d
+    - pyqt5
+    - keyboard
+    - pyautogui
+    - psutil
+    - configparser

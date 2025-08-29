@@ -1,0 +1,123 @@
+{
+  "SettingsVersion": 1.2,
+  "SimMode": "Multirotor",
+  "ClockSpeed": 1.0,
+  "ViewMode": "FlyWithMe",
+  "Vehicles": {
+    "Drone1": {
+      "VehicleType": "SimpleFlight",
+      "X": 0, "Y": 0, "Z": -2,
+      "Yaw": 0,
+      "Cameras": {
+        "front_center": {
+          "CaptureSettings": [
+            {
+              "ImageType": 0,
+              "Width": 640,
+              "Height": 480,
+              "FOV_Degrees": 90,
+              "AutoExposureSpeed": 100,
+              "MotionBlurAmount": 0
+            },
+            {
+              "ImageType": 2,
+              "Width": 640, 
+              "Height": 480,
+              "FOV_Degrees": 90
+            }
+          ],
+          "X": 0.25, "Y": 0, "Z": 0,
+          "Pitch": 0, "Roll": 0, "Yaw": 0
+        }
+      },
+      "Sensors": {
+        "Lidar": {
+          "SensorType": 6,
+          "Enabled": true,
+          "NumberOfChannels": 16,
+          "RotationsPerSecond": 10,
+          "PointsPerSecond": 100000,
+          "X": 0, "Y": 0, "Z": -0.5,
+          "Roll": 0, "Pitch": 0, "Yaw": 0,
+          "VerticalFOVUpper": 15,
+          "VerticalFOVLower": -25,
+          "HorizontalFOVStart": -180,
+          "HorizontalFOVEnd": 180,
+          "DrawDebugPoints": false,
+          "DataFrame": "SensorLocalFrame"
+        }
+      }
+    },
+    "Drone2": {
+      "VehicleType": "SimpleFlight", 
+      "X": 5, "Y": 0, "Z": -2,
+      "Yaw": 0,
+      "Cameras": {
+        "front_center": {
+          "CaptureSettings": [
+            {
+              "ImageType": 0,
+              "Width": 640,
+              "Height": 480, 
+              "FOV_Degrees": 90
+            },
+            {
+              "ImageType": 2,
+              "Width": 640,
+              "Height": 480,
+              "FOV_Degrees": 90
+            }
+          ]
+        }
+      },
+      "Sensors": {
+        "Lidar": {
+          "SensorType": 6,
+          "Enabled": true,
+          "NumberOfChannels": 16,
+          "RotationsPerSecond": 10,
+          "PointsPerSecond": 100000,
+          "X": 0, "Y": 0, "Z": -0.5,
+          "VerticalFOVUpper": 15,
+          "VerticalFOVLower": -25
+        }
+      }
+    },
+    "Drone3": {
+      "VehicleType": "SimpleFlight",
+      "X": -5, "Y": 0, "Z": -2,
+      "Yaw": 0,
+      "Cameras": {
+        "front_center": {
+          "CaptureSettings": [
+            {
+              "ImageType": 0,
+              "Width": 640,
+              "Height": 480,
+              "FOV_Degrees": 90
+            },
+            {
+              "ImageType": 2,
+              "Width": 640,
+              "Height": 480,
+              "FOV_Degrees": 90
+            }
+          ]
+        }
+      },
+      "Sensors": {
+        "Lidar": {
+          "SensorType": 6,
+          "Enabled": true,
+          "NumberOfChannels": 16,
+          "RotationsPerSecond": 10,
+          "PointsPerSecond": 100000
+        }
+      }
+    }
+  },
+  "Recording": {
+    "RecordOnMove": false,
+    "RecordInterval": 0.05
+  }
+}
