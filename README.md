@@ -4,7 +4,7 @@
 
 ## 项目概述
 
-本项目将原始的基于ROS的RACER系统重构为基于AirSim的Python实现，适用于Windows平台部署和AirSim-UE仿真环境。
+将原始的基于ROS的RACER系统重构为基于AirSim的Python实现，适用于Windows平台部署和AirSim-UE仿真环境。
 
 ## 环境要求
 
@@ -30,7 +30,7 @@ pip install -r requirements.txt
 
 ### 2. AirSim配置
 
-确保您的AirSim设置文件配置正确。参考 `config/airsim_settings.json`。
+确保AirSim设置文件配置正确。参考 `config/airsim_settings.json`。
 
 ### 3. 运行系统
 
@@ -49,7 +49,7 @@ python main.py
 - `scripts/` - 脚本工具
 - `tests/` - 测试代码
 
-## 原项目信息
+## 项目信息
 
 本项目基于SYSU-STAR的RACER项目重构：
 - 原项目地址：https://github.com/SYSU-STAR/RACER
