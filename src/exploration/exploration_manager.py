@@ -11,6 +11,7 @@ from ..airsim_interface.airsim_client import AirSimClient
 from .frontier_finder import FrontierFinder
 from .grid_map import GridMap
 from ..planning.path_planner import PathPlanner
+from ..coordination.swarm_coordinator import SwarmCoordinator
 
 
 @dataclass
@@ -38,9 +39,10 @@ class DroneState:
 
 
 class ExplorationManager:
-    def __init__(self, config: ExplorationConfig, airsim_client: AirSimClient):
+    def __init__(self, config: ExplorationConfig, airsim_client: AirSimClient, swarm_coordinator: SwarmCoordinator = None):
         self.config = config
         self.airsim_client = airsim_client
+        self.swarm_coordinator = swarm_coordinator
         
         # Initialize components
         self.grid_map = GridMap(
@@ -86,6 +88,11 @@ class ExplorationManager:
             )
             
             self.start_time = time.time()
+            
+            # Register with swarm coordinator if available
+            if self.swarm_coordinator:
+                self.swarm_coordinator.register_drone(self.config.drone_id, self.swarm_states[self.config.drone_id])
+            
             return True
             
         except Exception as e:
@@ -130,7 +137,13 @@ class ExplorationManager:
                 
                 if target is not None:
                     # Execute movement to target
-                    self._move_to_target(target)
+                    success = self._move_to_target(target)
+                    
+                    # Notify swarm coordinator of task completion if applicable
+                    if self.swarm_coordinator and hasattr(self, '_current_task_id'):
+                        self.swarm_coordinator.complete_task(self._current_task_id, success)
+                        delattr(self, '_current_task_id')
+                        
                 else:
                     # No more frontiers, exploration complete
                     self.exploration_complete = True
@@ -169,21 +182,26 @@ class ExplorationManager:
             if self._debug_counter % 10 == 1:  # Print every 10th update
                 print(f"Map update {self._debug_counter}: pos=[{pos[0]:.2f}, {pos[1]:.2f}, {pos[2]:.2f}]")
             
-            # Update grid map with sensor data
-            if lidar_points is not None and len(lidar_points) > 0:
-                self.grid_map.update_with_lidar(pos, lidar_points)
-                if self._debug_counter % 10 == 1:
-                    print(f"  LiDAR: {len(lidar_points)} points")
-            
-            # Update with depth camera (primary sensor)
+            # Update grid map with sensor data - prioritize depth camera
+            camera_updated = False
             if images and "front_center" in images:
                 depth_img = images["front_center"]["depth"]
                 if depth_img is not None:
-                    self.grid_map.update_with_depth_camera(pos, depth_img, camera_fov=90.0, max_range=10.0)
+                    # Enhanced depth camera processing for exploration
+                    self.grid_map.update_with_depth_camera(pos, depth_img, camera_fov=90.0, max_range=12.0)
+                    camera_updated = True
                     if self._debug_counter % 10 == 1:
                         valid_pixels = np.sum(depth_img > 0.1)
                         depth_range = f"{np.min(depth_img):.2f} - {np.max(depth_img):.2f}"
                         print(f"  Camera: {depth_img.shape}, {valid_pixels} valid pixels, range: {depth_range}m")
+            
+            # Try LiDAR as supplementary (if available)
+            if lidar_points is not None and len(lidar_points) > 0:
+                self.grid_map.update_with_lidar(pos, lidar_points)
+                if self._debug_counter % 10 == 1:
+                    print(f"  LiDAR: {len(lidar_points)} points")
+            elif camera_updated and self._debug_counter % 10 == 1:
+                print(f"  LiDAR: Not available, using depth camera only")
                 
         except Exception as e:
             print(f"Error updating occupancy map: {e}")
@@ -205,10 +223,24 @@ class ExplorationManager:
         pass
     
     def _find_frontiers(self):
-        """Find exploration frontiers"""
+        """Find exploration frontiers and submit to coordinator"""
         try:
             current_pos = self.swarm_states[self.config.drone_id].position
             self.local_frontiers = self.frontier_finder.find_frontiers(current_pos, search_radius=8.0)
+            
+            # Submit frontiers as tasks to swarm coordinator
+            if self.swarm_coordinator and len(self.local_frontiers) > 0:
+                for frontier in self.local_frontiers:
+                    # Calculate priority based on distance and other factors
+                    distance = distance_3d(current_pos, frontier)
+                    priority = 1.0 / (1.0 + distance / 10.0)  # Closer frontiers have higher priority
+                    
+                    # Submit task to coordinator
+                    self.swarm_coordinator.submit_exploration_task(
+                        target_position=frontier,
+                        priority=priority,
+                        estimated_time=max(10.0, distance * 2.0)  # Rough time estimate
+                    )
             
             # Debug output every 10 updates
             if hasattr(self, '_debug_counter') and self._debug_counter % 10 == 1:
@@ -222,11 +254,51 @@ class ExplorationManager:
             self.local_frontiers = []
     
     def _plan_next_target(self) -> Optional[np.ndarray]:
-        """Plan the next exploration target"""
-        if not self.local_frontiers:
-            return None
-            
+        """Plan the next exploration target using swarm coordination"""
         current_pos = self.swarm_states[self.config.drone_id].position
+        
+        # Update drone state in coordinator
+        if self.swarm_coordinator:
+            self.swarm_coordinator.update_drone_state(self.config.drone_id, self.swarm_states[self.config.drone_id])
+            
+            # Get coordinated target from swarm coordinator
+            coordinated_target = self.swarm_coordinator.get_optimal_target(self.config.drone_id)
+            if coordinated_target is not None:
+                print(f"Drone {self.config.drone_id} received coordinated target: [{coordinated_target[0]:.2f}, {coordinated_target[1]:.2f}, {coordinated_target[2]:.2f}]")
+                
+                # Store task ID for completion tracking
+                # Find the task ID for this target (simplified approach)
+                for task_id, task in self.swarm_coordinator.active_tasks.items():
+                    if (task.assigned_drone == self.config.drone_id and 
+                        np.allclose(task.target_position, coordinated_target, atol=0.1)):
+                        self._current_task_id = task_id
+                        break
+                
+                return coordinated_target
+        
+        # Fallback: If no coordinated target and no frontiers, create exploration waypoints
+        if not self.local_frontiers:
+            # Force exploration with predefined waypoints
+            if not hasattr(self, '_exploration_waypoints'):
+                self._exploration_waypoints = [
+                    current_pos + np.array([3.0, 0.0, 0.0]),
+                    current_pos + np.array([3.0, 3.0, 0.0]),
+                    current_pos + np.array([0.0, 3.0, 0.0]),
+                    current_pos + np.array([-3.0, 3.0, 0.0]),
+                    current_pos + np.array([-3.0, 0.0, 0.0]),
+                    current_pos + np.array([-3.0, -3.0, 0.0]),
+                    current_pos + np.array([0.0, -3.0, 0.0]),
+                    current_pos + np.array([3.0, -3.0, 0.0])
+                ]
+                self._waypoint_index = 0
+            
+            if self._waypoint_index < len(self._exploration_waypoints):
+                target = self._exploration_waypoints[self._waypoint_index]
+                self._waypoint_index += 1
+                print(f"No frontiers found, using exploration waypoint: [{target[0]:.2f}, {target[1]:.2f}, {target[2]:.2f}]")
+                return target
+            else:
+                return None
         
         # Simple greedy selection - choose closest accessible frontier
         best_frontier = None
@@ -263,8 +335,8 @@ class ExplorationManager:
                     penalty += (self.config.safety_distance - dist) * 10.0
         return penalty
     
-    def _move_to_target(self, target: np.ndarray):
-        """Move drone to target position"""
+    def _move_to_target(self, target: np.ndarray) -> bool:
+        """Move drone to target position and return success status"""
         try:
             # Plan path to target
             current_pos = self.swarm_states[self.config.drone_id].position
@@ -274,22 +346,25 @@ class ExplorationManager:
                 # Execute path
                 for waypoint in path[1:]:  # Skip current position
                     if not self.running:
-                        break
+                        return False
                     success = self.airsim_client.move_to_position(
                         waypoint[0], waypoint[1], waypoint[2], velocity=3.0
                     )
                     if not success:
                         print(f"Failed to reach waypoint: {waypoint}")
-                        break
+                        return False
                     time.sleep(0.1)  # Small delay between waypoints
+                return True
             else:
                 # Direct movement if no path found
-                self.airsim_client.move_to_position(
+                success = self.airsim_client.move_to_position(
                     target[0], target[1], target[2], velocity=2.0
                 )
+                return success
                 
         except Exception as e:
             print(f"Error moving to target: {e}")
+            return False
     
     def get_exploration_progress(self) -> Dict:
         """Get current exploration progress"""

@@ -14,6 +14,7 @@ import threading
 
 from src.airsim_interface.airsim_client import AirSimClient
 from src.exploration.exploration_manager import ExplorationManager, ExplorationConfig
+from src.coordination.swarm_coordinator import SwarmCoordinator
 from src.utils.math_utils import distance_3d
 
 
@@ -107,17 +108,120 @@ def run_single_drone_exploration(drone_id: int, config_path: str):
         print(f"Error in drone {drone_id} exploration: {e}")
 
 
+def run_coordinated_drone_exploration(drone_id: int, config_path: str, swarm_coordinator: SwarmCoordinator):
+    """Run exploration for a single drone with swarm coordination"""
+    print(f"Starting coordinated exploration for Drone {drone_id}")
+    
+    # Load configuration
+    yaml_config = load_config(config_path)
+    exploration_config = create_exploration_config(yaml_config, drone_id)
+    
+    # Connect to AirSim
+    vehicle_name = f"Drone{drone_id + 1}"
+    airsim_config = yaml_config.get('airsim', {})
+    
+    try:
+        airsim_client = AirSimClient(
+            vehicle_name=vehicle_name,
+            ip_address=airsim_config.get('ip_address', '127.0.0.1'),
+            port=airsim_config.get('port', 41451)
+        )
+        
+        print(f"Connected to AirSim for {vehicle_name}")
+        
+        # Create exploration manager with swarm coordinator
+        exploration_manager = ExplorationManager(exploration_config, airsim_client, swarm_coordinator)
+        
+        # Start exploration
+        exploration_manager.start_exploration()
+        
+        # Monitor exploration progress
+        last_progress_time = time.time()
+        while exploration_manager.running:
+            time.sleep(1.0)
+            
+            # Print progress every 15 seconds
+            if time.time() - last_progress_time > 15.0:
+                progress = exploration_manager.get_exploration_progress()
+                print(f"Drone {drone_id} - Progress: {progress['explored_percentage']:.1f}%, "
+                      f"Frontiers: {progress['frontiers_count']}, "
+                      f"Time: {progress['elapsed_time']:.1f}s")
+                last_progress_time = time.time()
+        
+        print(f"Coordinated exploration completed for Drone {drone_id}")
+        
+        # Land the drone
+        airsim_client.land()
+        airsim_client.disconnect()
+        
+    except Exception as e:
+        print(f"Error in coordinated drone {drone_id} exploration: {e}")
+
+
+def monitor_swarm_performance(swarm_coordinator: SwarmCoordinator, num_drones: int):
+    """Monitor and report swarm performance"""
+    start_time = time.time()
+    
+    while swarm_coordinator.running:
+        try:
+            time.sleep(30.0)  # Report every 30 seconds
+            
+            report = swarm_coordinator.get_performance_report()
+            elapsed = time.time() - start_time
+            
+            print(f"\n=== SWARM PERFORMANCE REPORT (t={elapsed:.1f}s) ===")
+            print(f"Active Drones: {report['active_drones']}/{num_drones}")
+            print(f"Active Tasks: {report['active_tasks']}")
+            print(f"Completed Tasks: {report['completed_tasks']}")
+            print(f"Communication Links: {report['communication_links']}")
+            print(f"Exploration Efficiency: {report['performance_metrics']['exploration_efficiency']:.2f}")
+            print(f"Coordination Overhead: {report['performance_metrics']['coordination_overhead']:.2f}")
+            print(f"Collision Avoidances: {report['performance_metrics']['collision_avoidance_count']}")
+            
+            # ALTA-specific metrics
+            if 'learning_accuracy' in report['performance_metrics']:
+                print(f"ALTA Learning Accuracy: {report['performance_metrics']['learning_accuracy']:.2f}")
+                print(f"ALTA Adaptation Rate: {report['performance_metrics']['adaptation_rate']:.2f}")
+            
+            print("Drone Status:")
+            for drone_id, status in report['drone_status'].items():
+                print(f"  Drone {drone_id}: {status['role']}, Battery: {status['battery']:.1f}%, "
+                      f"Load: {status['load']}, Efficiency: {status['efficiency']:.2f}")
+            
+            # Display ALTA statistics if available
+            if 'alta_statistics' in report and report['alta_statistics']:
+                alta_stats = report['alta_statistics']
+                print("\nALTA Learning Statistics:")
+                print(f"  Total Allocations: {alta_stats.get('total_allocations', 0)}")
+                print(f"  Average Confidence: {alta_stats.get('average_confidence', 0):.2f}")
+                print(f"  Learning Episodes: {alta_stats.get('learning_episodes', 0)}")
+                if 'drone_capabilities' in alta_stats:
+                    print("  Drone Learning Progress:")
+                    for drone_id, capability in alta_stats['drone_capabilities'].items():
+                        exploration_skill = capability.get('exploration', {}).get('skill_level', 0)
+                        print(f"    Drone {drone_id}: Exploration Skill {exploration_skill:.2f}")
+            
+            print("=" * 60)
+            
+        except Exception as e:
+            print(f"Error in performance monitoring: {e}")
+
+
 def run_multi_drone_exploration(num_drones: int, config_path: str):
-    """Run multi-drone collaborative exploration"""
-    print(f"Starting multi-drone exploration with {num_drones} drones")
+    """Run enhanced multi-drone collaborative exploration with swarm coordination"""
+    print(f"Starting enhanced multi-drone exploration with {num_drones} drones")
+    
+    # Create swarm coordinator
+    swarm_coordinator = SwarmCoordinator(num_drones=num_drones, communication_range=50.0)
+    swarm_coordinator.start_coordination()
     
     # Create threads for each drone
     threads = []
     
     for drone_id in range(num_drones):
         thread = threading.Thread(
-            target=run_single_drone_exploration,
-            args=(drone_id, config_path)
+            target=run_coordinated_drone_exploration,
+            args=(drone_id, config_path, swarm_coordinator)
         )
         threads.append(thread)
         thread.start()
@@ -125,11 +229,17 @@ def run_multi_drone_exploration(num_drones: int, config_path: str):
         # Small delay between drone starts
         time.sleep(2.0)
     
+    # Monitor swarm performance
+    monitor_thread = threading.Thread(target=monitor_swarm_performance, args=(swarm_coordinator, num_drones))
+    monitor_thread.start()
+    
     # Wait for all drones to complete
     for thread in threads:
         thread.join()
     
-    print("Multi-drone exploration completed!")
+    # Stop coordinator and monitoring
+    swarm_coordinator.stop_coordination()
+    print("Enhanced multi-drone exploration completed!")
 
 
 def main():
