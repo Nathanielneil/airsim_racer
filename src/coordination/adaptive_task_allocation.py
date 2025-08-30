@@ -961,3 +961,66 @@ class AdaptiveLearningTaskAllocator:
         except Exception as e:
             print(f"Failed to load learning model: {e}")
             return False
+    
+    def get_performance_statistics(self) -> Dict:
+        """获取ALTA性能统计信息"""
+        with self.allocation_lock:
+            # 计算总体统计
+            total_allocations = sum(self.performance_metrics.get('allocations', {}).values())
+            learning_episodes = len(self.experience_replay_buffer)
+            
+            # 计算平均预测准确率
+            if self.performance_metrics.get('prediction_accuracy'):
+                avg_prediction_accuracy = np.mean(list(self.performance_metrics['prediction_accuracy'].values()))
+            else:
+                avg_prediction_accuracy = 0.0
+            
+            # 计算平均置信度
+            avg_confidence = 0.0
+            confidence_count = 0
+            for drone_id in range(self.num_drones):
+                if drone_id in self.bandit_arms:
+                    if self.bandit_arms[drone_id]['selections'] > 0:
+                        avg_confidence += self.bandit_arms[drone_id]['estimated_reward']
+                        confidence_count += 1
+            
+            if confidence_count > 0:
+                avg_confidence /= confidence_count
+            
+            # 计算适应率（基于最近的学习活动）
+            recent_episodes = min(100, len(self.experience_replay_buffer))
+            if recent_episodes > 0:
+                recent_performances = [exp['reward'] for exp in list(self.experience_replay_buffer)[-recent_episodes:]]
+                if len(recent_performances) > 10:
+                    early_avg = np.mean(recent_performances[:10])
+                    late_avg = np.mean(recent_performances[-10:])
+                    adaptation_rate = max(0.0, (late_avg - early_avg) / max(early_avg, 0.1))
+                else:
+                    adaptation_rate = 0.0
+            else:
+                adaptation_rate = 0.0
+            
+            # 无人机能力统计
+            drone_capabilities_stats = {}
+            for drone_id, capabilities in self.drone_capabilities.items():
+                drone_capabilities_stats[str(drone_id)] = {
+                    'exploration': {
+                        'skill_level': capabilities.get('exploration_efficiency', 0.0),
+                        'experience_count': len([exp for exp in self.experience_replay_buffer if exp.get('drone_id') == drone_id])
+                    },
+                    'specialization': capabilities.get('specialization', 'general'),
+                    'total_tasks': self.performance_metrics.get('allocations', {}).get(drone_id, 0)
+                }
+            
+            return {
+                'total_allocations': total_allocations,
+                'learning_episodes': learning_episodes,
+                'average_prediction_accuracy': avg_prediction_accuracy,
+                'average_confidence': avg_confidence,
+                'adaptation_rate': adaptation_rate,
+                'drone_capabilities': drone_capabilities_stats,
+                'learning_strategy': self.learning_strategy.value,
+                'epsilon': self.epsilon,
+                'q_table_size': len(self.q_table),
+                'cross_task_transfer_entries': len(self.cross_task_transfer_matrix)
+            }
