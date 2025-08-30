@@ -1006,13 +1006,27 @@ class AdaptiveLearningTaskAllocator:
                 # 计算每个无人机的经验数量
                 drone_experience_count = len([exp for exp in self.experience_replay_buffer if exp.action == drone_id])
                 
+                # 获取探索效率技能等级 - 从学习能力中获取，如果没有则从基础能力获取
+                exploration_skill = (capabilities.learned_capabilities.get('exploration_efficiency', 0.0) + 
+                                   capabilities.base_capabilities.get('exploration_efficiency', 0.5))
+                
+                # 获取专长信息 - 从基础能力中找到最高的能力作为专长
+                specialization = 'general'
+                max_capability_value = 0.0
+                for cap_name, cap_value in capabilities.base_capabilities.items():
+                    if cap_value > max_capability_value:
+                        max_capability_value = cap_value
+                        specialization = cap_name
+                
                 drone_capabilities_stats[str(drone_id)] = {
                     'exploration': {
-                        'skill_level': capabilities.get('exploration_efficiency', 0.0),
+                        'skill_level': exploration_skill,
                         'experience_count': drone_experience_count
                     },
-                    'specialization': capabilities.get('specialization', 'general'),
-                    'total_tasks': self.performance_metrics.get('allocations', {}).get(drone_id, 0)
+                    'specialization': specialization,
+                    'total_tasks': self.performance_metrics.get('allocations', {}).get(drone_id, 0),
+                    'success_rates': {task_type.value: rate for task_type, rate in capabilities.success_rate.items()},
+                    'avg_completion_times': {task_type.value: time for task_type, time in capabilities.avg_completion_time.items()}
                 }
             
             return {
