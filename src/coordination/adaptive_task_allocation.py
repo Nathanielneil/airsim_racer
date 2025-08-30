@@ -614,8 +614,20 @@ class AdaptiveLearningTaskAllocator:
             if isinstance(value, float):
                 # 将浮点数量化为离散值
                 quantized_features[key] = round(value, 2)
-            else:
+            elif isinstance(value, np.ndarray):
+                # 将numpy数组转换为列表
+                quantized_features[key] = [round(float(x), 2) for x in value.flatten()]
+            elif isinstance(value, (int, str, bool)):
                 quantized_features[key] = value
+            elif hasattr(value, '__iter__') and not isinstance(value, (str, bytes)):
+                # 处理其他可迭代对象
+                try:
+                    quantized_features[key] = list(value)
+                except:
+                    quantized_features[key] = str(value)
+            else:
+                # 其他类型转换为字符串
+                quantized_features[key] = str(value)
         
         return json.dumps(quantized_features, sort_keys=True)
     
