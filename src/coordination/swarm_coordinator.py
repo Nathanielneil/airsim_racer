@@ -12,24 +12,11 @@ from enum import Enum
 import json
 import queue
 
-from ..exploration.exploration_manager import DroneState
 from ..utils.math_utils import distance_3d
 from .adaptive_task_allocation import AdaptiveLearningTaskAllocator, TaskType
+from .types import DroneState, TaskStatus, DroneRole
 
 
-class TaskStatus(Enum):
-    PENDING = "pending"
-    ASSIGNED = "assigned"
-    IN_PROGRESS = "in_progress"
-    COMPLETED = "completed"
-    FAILED = "failed"
-
-
-class DroneRole(Enum):
-    EXPLORER = "explorer"      # Primary exploration
-    MAPPER = "mapper"          # Focus on mapping
-    COORDINATOR = "coordinator"  # Coordination tasks
-    SUPPORT = "support"        # Support other drones
 
 
 @dataclass

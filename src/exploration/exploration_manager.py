@@ -1,7 +1,7 @@
 import numpy as np
 import time
 import threading
-from typing import List, Tuple, Dict, Optional
+from typing import List, Tuple, Dict, Optional, TYPE_CHECKING
 from dataclasses import dataclass
 from queue import Queue, PriorityQueue
 import copy
@@ -11,7 +11,9 @@ from ..airsim_interface.airsim_client import AirSimClient
 from .frontier_finder import FrontierFinder
 from .grid_map import GridMap
 from ..planning.path_planner import PathPlanner
-from ..coordination.swarm_coordinator import SwarmCoordinator
+
+if TYPE_CHECKING:
+    from ..coordination.swarm_coordinator import SwarmCoordinator
 
 
 @dataclass
@@ -28,18 +30,12 @@ class ExplorationConfig:
     update_frequency: float = 10.0  # Hz
 
 
-@dataclass 
-class DroneState:
-    drone_id: int
-    position: np.ndarray
-    velocity: np.ndarray
-    battery_level: float
-    timestamp: float
-    current_goal: Optional[np.ndarray] = None
+# Import DroneState from coordination module to avoid circular imports
+from ..coordination.types import DroneState
 
 
 class ExplorationManager:
-    def __init__(self, config: ExplorationConfig, airsim_client: AirSimClient, swarm_coordinator: SwarmCoordinator = None):
+    def __init__(self, config: ExplorationConfig, airsim_client: AirSimClient, swarm_coordinator: Optional['SwarmCoordinator'] = None):
         self.config = config
         self.airsim_client = airsim_client
         self.swarm_coordinator = swarm_coordinator
