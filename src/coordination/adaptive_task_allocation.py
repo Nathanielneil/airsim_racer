@@ -165,6 +165,51 @@ class AdaptiveLearningTaskAllocator:
                 'beta_beta': 1.0
             }
     
+    def allocate_tasks(self, tasks: List[Dict], drone_states: Dict) -> Dict[str, int]:
+        """
+        批量任务分配函数 - 用于测试和外部接口
+        参数:
+            tasks: 任务列表，每个任务包含 task_id, task_type, location 等信息
+            drone_states: 无人机状态字典
+        返回:
+            Dict[task_id, assigned_drone_id]
+        """
+        allocations = {}
+        available_drones = list(drone_states.keys())
+        
+        for task_data in tasks:
+            if not available_drones:
+                break
+                
+            # 转换为内部任务格式
+            task = Task(
+                task_id=task_data['task_id'],
+                task_type=task_data.get('task_type', TaskType.EXPLORATION),
+                priority=task_data.get('priority', 0.5),
+                complexity=task_data.get('complexity', 0.5),
+                required_capabilities=task_data.get('required_sensors', []),
+                estimated_duration=task_data.get('estimated_duration', 30.0),
+                location=task_data['location']
+            )
+            
+            # 转换系统状态格式
+            current_system_state = {
+                'drone_states': drone_states,
+                'environmental_conditions': task_data.get('environmental_conditions', {}),
+                'system_load': len(tasks) / len(drone_states) if drone_states else 1.0
+            }
+            
+            try:
+                selected_drone, confidence = self.allocate_task(task, available_drones, current_system_state)
+                allocations[task_data['task_id']] = selected_drone
+                # 可选：移除已分配的无人机（如果需要独占分配）
+                # available_drones.remove(selected_drone)
+            except Exception as e:
+                print(f"Failed to allocate task {task_data['task_id']}: {e}")
+                continue
+        
+        return allocations
+    
     def allocate_task(self, task: Task, available_drones: List[int], 
                      current_system_state: Dict) -> Tuple[int, float]:
         """
