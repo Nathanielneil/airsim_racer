@@ -1075,7 +1075,9 @@ class AdaptiveLearningTaskAllocator:
             
             # 计算平均预测准确率 - 基于实际的学习经验
             prediction_accuracies = []
-            for exp in self.experience_replay_buffer[-50:]:  # 最近50次经验
+            # 获取最近50次经验（deque不支持切片，需要转换为list）
+            recent_experiences = list(self.experience_replay_buffer)[-50:] if len(self.experience_replay_buffer) > 0 else []
+            for exp in recent_experiences:
                 if hasattr(exp, 'reward') and hasattr(exp, 'success'):
                     # 预测准确性 = 实际成功率与预期的匹配度
                     expected_success = 1.0 if exp.reward > 0.5 else 0.0
@@ -1100,7 +1102,9 @@ class AdaptiveLearningTaskAllocator:
             # 计算适应率（基于最近的学习活动）
             recent_episodes = min(100, len(self.experience_replay_buffer))
             if recent_episodes > 0:
-                recent_performances = [exp.reward for exp in list(self.experience_replay_buffer)[-recent_episodes:]]
+                # 安全地获取最近的经验
+                all_experiences = list(self.experience_replay_buffer)
+                recent_performances = [exp.reward for exp in all_experiences[-recent_episodes:]]
                 if len(recent_performances) > 10:
                     early_avg = np.mean(recent_performances[:10])
                     late_avg = np.mean(recent_performances[-10:])
