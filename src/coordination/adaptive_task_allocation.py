@@ -829,15 +829,15 @@ class AdaptiveLearningTaskAllocator:
         new_avg_time = current_avg_time * 0.8 + duration * 0.2
         capability.avg_completion_time[task_info] = new_avg_time
         
-        # 改进的能力学习更新机制
-        # 性能因子：将[0,1]映射到[-0.2, +0.2]的学习调整范围
-        performance_factor = (performance - 0.5) * 0.4  # 最大±20%调整
+        # 更平衡的能力学习更新机制
+        # 性能因子：将[0,1]映射到[-0.1, +0.1]的学习调整范围（减半）
+        performance_factor = (performance - 0.5) * 0.2  # 最大±10%调整
         
-        # 成功奖励机制：成功的任务获得额外奖励
-        success_bonus = 0.05 if success else -0.02  # 成功+5%，失败-2%
+        # 温和的成功奖励机制：渐进式改进
+        success_bonus = 0.03 if success else -0.01  # 成功+3%，失败-1%
         
-        # 经验加成：更多经验的任务类型学习效率更高
-        experience_multiplier = min(2.0, 1.0 + capability.experience_count[task_info] * 0.1)
+        # 经验加成：更保守的学习速度
+        experience_multiplier = min(1.5, 1.0 + capability.experience_count[task_info] * 0.05)
         
         required_caps = self._get_task_capability_requirements_by_type(task_info)
         for cap_name, importance in required_caps.items():
@@ -847,15 +847,30 @@ class AdaptiveLearningTaskAllocator:
                 # 综合调整：性能 + 成功奖励 + 经验加成
                 total_adjustment = (performance_factor + success_bonus) * importance * experience_multiplier
                 
-                # 防止过度调整：单次最大±15%
-                total_adjustment = max(-0.15, min(0.15, total_adjustment))
+                # 防止过度调整：单次最大±8%（更保守）
+                total_adjustment = max(-0.08, min(0.08, total_adjustment))
                 
                 new_value = max(0.1, min(1.0, current_value + total_adjustment))
                 capability.learned_capabilities[cap_name] = new_value
                 
-                # 调试输出：记录关键学习更新
-                if abs(total_adjustment) > 0.02:  # 只记录显著变化
+                # 调试输出：记录关键学习更新（减少日志噪音）
+                if abs(total_adjustment) > 0.03:  # 只记录更显著的变化
                     print(f"Skill Update: Drone {drone_id} {cap_name}: {current_value:.3f} -> {new_value:.3f} ({total_adjustment:+.3f})")
+                    
+        # 添加学习稳定化：防止技能过度波动
+        # 使用指数移动平均来平滑技能变化
+        for cap_name in capability.learned_capabilities.keys():
+            current_value = capability.learned_capabilities[cap_name]
+            base_value = capability.base_capabilities.get(cap_name, 0.5)
+            
+            # 保持与基础技能的联系，防止偏离太远
+            if abs(current_value - base_value) > 0.3:  # 如果偏离基础技能太远
+                # 轻微拉回基础技能值
+                pull_back_factor = 0.02
+                if current_value > base_value:
+                    capability.learned_capabilities[cap_name] -= pull_back_factor
+                else:
+                    capability.learned_capabilities[cap_name] += pull_back_factor
     
     def _get_task_capability_requirements_by_type(self, task_type: TaskType) -> Dict[str, float]:
         """根据任务类型获取能力需求"""
