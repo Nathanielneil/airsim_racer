@@ -127,8 +127,19 @@ def simulate_task_execution(allocator: AdaptiveLearningTaskAllocator,
             'performance_score': performance_score
         }
         
-        # Update ALTA learning
-        allocator.update_learning(assigned_drone, learning_context)
+        # Update ALTA learning with correct parameters
+        allocator.update_learning(
+            task_id=task_id,
+            selected_drone=assigned_drone,
+            actual_performance=performance_score,
+            task_duration=actual_duration,
+            success=success,
+            final_state={
+                'drone_position': drone_states[assigned_drone]['position'],
+                'battery_remaining': drone_states[assigned_drone]['battery_level'],
+                'task_complexity': complexity
+            }
+        )
         
         results.append({
             'task_id': task_id,
