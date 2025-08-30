@@ -168,6 +168,7 @@ class AdaptiveLearningTaskAllocator:
     def allocate_tasks(self, tasks: List[Dict], drone_states: Dict) -> Dict[str, int]:
         """
         批量任务分配函数 - 用于测试和外部接口
+        支持负载均衡的智能分配
         参数:
             tasks: 任务列表，每个任务包含 task_id, task_type, location 等信息
             drone_states: 无人机状态字典
@@ -176,6 +177,9 @@ class AdaptiveLearningTaskAllocator:
         """
         allocations = {}
         available_drones = list(drone_states.keys())
+        
+        # 追踪每个无人机的当前负载
+        current_loads = {drone_id: 0 for drone_id in available_drones}
         
         for task_data in tasks:
             if not available_drones:
@@ -192,21 +196,36 @@ class AdaptiveLearningTaskAllocator:
                 location=task_data['location']
             )
             
-            # 转换系统状态格式
+            # 转换系统状态格式，包含当前负载信息
             current_system_state = {
                 'drone_states': drone_states,
                 'environmental_conditions': task_data.get('environmental_conditions', {}),
-                'system_load': len(tasks) / len(drone_states) if drone_states else 1.0
+                'system_load': len(tasks) / len(drone_states) if drone_states else 1.0,
+                'current_loads': current_loads.copy()
             }
             
             try:
                 selected_drone, confidence = self.allocate_task(task, available_drones, current_system_state)
+                
+                # 应用负载均衡检查
+                selected_drone = self._apply_load_balancing(
+                    task, selected_drone, current_loads, available_drones, current_system_state
+                )
+                
                 allocations[task_data['task_id']] = selected_drone
-                # 可选：移除已分配的无人机（如果需要独占分配）
-                # available_drones.remove(selected_drone)
+                current_loads[selected_drone] += 1
+                
+                # 更新分配统计
+                self._update_allocation_statistics(selected_drone)
+                
+                print(f"Task {task_data['task_id']} assigned to Drone {selected_drone} (Load: {current_loads[selected_drone]})")
+                
             except Exception as e:
                 print(f"Failed to allocate task {task_data['task_id']}: {e}")
                 continue
+        
+        # 强制分配多样化检查
+        allocations = self._enforce_allocation_diversity(allocations, drone_states)
         
         return allocations
     
@@ -1041,3 +1060,73 @@ class AdaptiveLearningTaskAllocator:
                 'q_table_size': len(self.q_table),
                 'cross_task_transfer_entries': len(self.cross_task_transfer_matrix)
             }
+    
+    def _apply_load_balancing(self, task: Task, selected_drone: int, 
+                            current_loads: Dict[int, int], available_drones: List[int],
+                            system_state: Dict) -> int:
+        """应用负载均衡策略"""
+        if len(available_drones) <= 1:
+            return selected_drone
+        
+        # 计算负载均衡惩罚
+        avg_load = sum(current_loads.values()) / len(current_loads)
+        current_drone_load = current_loads[selected_drone]
+        
+        # 如果选定的无人机负载过高，尝试重新分配
+        if current_drone_load > avg_load + 2:  # 负载阈值
+            # 找到负载最轻的无人机
+            min_load_drone = min(current_loads.items(), key=lambda x: x[1])[0]
+            
+            # 如果负载差异显著，重新分配
+            if current_loads[min_load_drone] < current_drone_load - 1:
+                print(f"Load balancing: Reassigning from Drone {selected_drone} (load:{current_drone_load}) to Drone {min_load_drone} (load:{current_loads[min_load_drone]})")
+                return min_load_drone
+        
+        return selected_drone
+    
+    def _enforce_allocation_diversity(self, allocations: Dict[str, int], 
+                                    drone_states: Dict) -> Dict[str, int]:
+        """强制分配多样化 - 确保所有无人机都参与"""
+        if len(allocations) == 0 or len(drone_states) <= 1:
+            return allocations
+        
+        # 统计每个无人机的任务数量
+        drone_task_counts = {drone_id: 0 for drone_id in drone_states.keys()}
+        for task_id, drone_id in allocations.items():
+            drone_task_counts[drone_id] += 1
+        
+        # 检查是否有无人机完全没有任务
+        zero_task_drones = [drone_id for drone_id, count in drone_task_counts.items() if count == 0]
+        
+        if zero_task_drones:
+            print(f"Enforcing diversity: {len(zero_task_drones)} drones with zero tasks")
+            
+            # 找到任务最多的无人机
+            max_task_drone = max(drone_task_counts.items(), key=lambda x: x[1])[0]
+            max_tasks = drone_task_counts[max_task_drone]
+            
+            # 重新分配部分任务
+            tasks_to_redistribute = list(allocations.items())
+            redistribute_count = min(len(zero_task_drones), max_tasks // 2)
+            
+            for i, zero_drone in enumerate(zero_task_drones[:redistribute_count]):
+                # 从负载最重的无人机那里转移任务
+                for task_id, current_drone in tasks_to_redistribute:
+                    if current_drone == max_task_drone:
+                        allocations[task_id] = zero_drone
+                        drone_task_counts[max_task_drone] -= 1
+                        drone_task_counts[zero_drone] += 1
+                        print(f"Diversity: Reassigned {task_id} from Drone {max_task_drone} to Drone {zero_drone}")
+                        break
+        
+        return allocations
+    
+    def _update_allocation_statistics(self, drone_id: int):
+        """更新分配统计"""
+        if 'allocations' not in self.performance_metrics:
+            self.performance_metrics['allocations'] = {}
+        
+        if drone_id not in self.performance_metrics['allocations']:
+            self.performance_metrics['allocations'][drone_id] = 0
+        
+        self.performance_metrics['allocations'][drone_id] += 1
