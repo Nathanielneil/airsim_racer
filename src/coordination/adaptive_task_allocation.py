@@ -390,23 +390,51 @@ class AdaptiveLearningTaskAllocator:
     
     def _thompson_sampling_selection(self, task: Task, available_drones: List[int], 
                                    state_features: Dict) -> Tuple[int, float]:
-        """Thompson采样选择策略"""
+        """Thompson采样选择策略 - 改进版本，解决性能崩塌问题"""
         best_drone = None
         best_sample = float('-inf')
         samples = {}
+        current_loads = state_features.get('current_loads', {})
+        
+        # 多样本平均策略：减少单次采样的随机性
+        num_samples = 5  # 每个arm采样5次取平均
         
         for drone_id in available_drones:
             arm_data = self.bandit_arms[drone_id]
             
-            # 从Beta分布中采样
-            alpha = arm_data['beta_alpha']
-            beta = arm_data['beta_beta']
+            # 改进的Beta参数处理
+            alpha = max(1.0, arm_data['beta_alpha'])
+            beta = max(1.0, arm_data['beta_beta'])
             
-            sample = np.random.beta(alpha, beta)
+            # 多次采样取平均，减少方差
+            samples_list = []
+            for _ in range(num_samples):
+                try:
+                    sample = np.random.beta(alpha, beta)
+                    samples_list.append(sample)
+                except (ValueError, FloatingPointError):
+                    # 处理极端参数值
+                    sample = alpha / (alpha + beta)  # 使用期望值作为fallback
+                    samples_list.append(sample)
             
-            # 添加任务匹配奖励
+            # 使用样本均值，提高稳定性
+            avg_sample = np.mean(samples_list)
+            
+            # 添加任务匹配奖励（权重降低，避免过度影响）
             task_match = self._calculate_capability_match(drone_id, task)
-            adjusted_sample = sample + task_match * 0.3
+            
+            # 负载均衡惩罚：高负载的无人机降低选择概率
+            load_penalty = 0.0
+            if current_loads and drone_id in current_loads:
+                avg_load = sum(current_loads.values()) / len(current_loads) if current_loads else 0
+                if current_loads[drone_id] > avg_load:
+                    load_penalty = (current_loads[drone_id] - avg_load) * 0.15
+            
+            # 综合评分：平衡采样值、任务匹配和负载均衡
+            adjusted_sample = (avg_sample * 0.7 + task_match * 0.2) - load_penalty
+            
+            # 确保结果在合理范围内
+            adjusted_sample = max(0.0, min(1.0, adjusted_sample))
             
             samples[drone_id] = adjusted_sample
             
@@ -414,13 +442,33 @@ class AdaptiveLearningTaskAllocator:
                 best_sample = adjusted_sample
                 best_drone = drone_id
         
-        # 置信度基于采样分布
+        # 改进的置信度计算：基于Beta分布的方差和样本质量
         if len(samples) > 1:
             sample_values = list(samples.values())
-            confidence = (best_sample - np.mean(sample_values)) / (np.std(sample_values) + 1e-6)
-            confidence = min(1.0, max(0.0, confidence))
+            sample_mean = np.mean(sample_values)
+            sample_std = np.std(sample_values)
+            
+            # 基于相对优势和分布稳定性计算置信度
+            if sample_std > 0:
+                relative_advantage = (best_sample - sample_mean) / sample_std
+                confidence = min(0.95, max(0.1, 0.5 + relative_advantage * 0.2))
+            else:
+                confidence = 0.6  # 所有选项相同时的中等置信度
+            
+            # 基于Beta分布的置信度调整
+            if best_drone and best_drone in self.bandit_arms:
+                arm = self.bandit_arms[best_drone]
+                # Beta分布的方差越小，置信度越高
+                alpha = arm['beta_alpha']
+                beta = arm['beta_beta']
+                beta_variance = (alpha * beta) / ((alpha + beta) ** 2 * (alpha + beta + 1))
+                variance_confidence = max(0.0, 1.0 - beta_variance * 5)  # 方差越小置信度越高
+                confidence = (confidence + variance_confidence) / 2
         else:
-            confidence = 0.5
+            confidence = 0.4
+        
+        # 最终置信度限制在合理范围
+        confidence = max(0.1, min(0.95, confidence))
         
         return best_drone or np.random.choice(available_drones), confidence
     
@@ -732,11 +780,19 @@ class AdaptiveLearningTaskAllocator:
         # 更新估计奖励
         arm_data['estimated_reward'] = np.mean(arm_data['rewards'])
         
-        # 更新Thompson采样的Beta分布参数
-        if reward > 0.5:  # 成功
-            arm_data['beta_alpha'] += 1
-        else:  # 失败
-            arm_data['beta_beta'] += 1
+        # 更新Thompson采样的Beta分布参数 - 改进版本
+        # 使用奖励值作为成功概率更新，而不是简单的阈值判断
+        success_weight = max(0.0, min(1.0, reward * 2.0))  # 将[0,1] reward映射到更敏感的范围
+        failure_weight = 1.0 - success_weight
+        
+        # 渐进式更新Beta参数
+        learning_rate_beta = 0.1
+        arm_data['beta_alpha'] += success_weight * learning_rate_beta
+        arm_data['beta_beta'] += failure_weight * learning_rate_beta
+        
+        # 防止参数过小导致极端采样
+        arm_data['beta_alpha'] = max(0.1, arm_data['beta_alpha'])
+        arm_data['beta_beta'] = max(0.1, arm_data['beta_beta'])
     
     def _update_drone_capabilities(self, drone_id: int, task_id: str, 
                                  performance: float, duration: float, success: bool):
