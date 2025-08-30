@@ -796,7 +796,7 @@ class AdaptiveLearningTaskAllocator:
     
     def _update_drone_capabilities(self, drone_id: int, task_id: str, 
                                  performance: float, duration: float, success: bool):
-        """更新无人机能力模型"""
+        """更新无人机能力模型 - 改进版本支持实际技能提升"""
         if drone_id not in self.drone_capabilities:
             return
         
@@ -829,16 +829,33 @@ class AdaptiveLearningTaskAllocator:
         new_avg_time = current_avg_time * 0.8 + duration * 0.2
         capability.avg_completion_time[task_info] = new_avg_time
         
-        # 基于性能更新学习到的能力
-        performance_factor = (performance - 0.5) * capability.learning_rate
+        # 改进的能力学习更新机制
+        # 性能因子：将[0,1]映射到[-0.2, +0.2]的学习调整范围
+        performance_factor = (performance - 0.5) * 0.4  # 最大±20%调整
+        
+        # 成功奖励机制：成功的任务获得额外奖励
+        success_bonus = 0.05 if success else -0.02  # 成功+5%，失败-2%
+        
+        # 经验加成：更多经验的任务类型学习效率更高
+        experience_multiplier = min(2.0, 1.0 + capability.experience_count[task_info] * 0.1)
         
         required_caps = self._get_task_capability_requirements_by_type(task_info)
         for cap_name, importance in required_caps.items():
             if cap_name in capability.learned_capabilities:
                 current_value = capability.learned_capabilities[cap_name]
-                adjustment = performance_factor * importance * 0.1  # 小幅调整
-                new_value = max(0.1, min(1.0, current_value + adjustment))
+                
+                # 综合调整：性能 + 成功奖励 + 经验加成
+                total_adjustment = (performance_factor + success_bonus) * importance * experience_multiplier
+                
+                # 防止过度调整：单次最大±15%
+                total_adjustment = max(-0.15, min(0.15, total_adjustment))
+                
+                new_value = max(0.1, min(1.0, current_value + total_adjustment))
                 capability.learned_capabilities[cap_name] = new_value
+                
+                # 调试输出：记录关键学习更新
+                if abs(total_adjustment) > 0.02:  # 只记录显著变化
+                    print(f"Skill Update: Drone {drone_id} {cap_name}: {current_value:.3f} -> {new_value:.3f} ({total_adjustment:+.3f})")
     
     def _get_task_capability_requirements_by_type(self, task_type: TaskType) -> Dict[str, float]:
         """根据任务类型获取能力需求"""
@@ -1056,11 +1073,17 @@ class AdaptiveLearningTaskAllocator:
             total_allocations = sum(self.performance_metrics.get('allocations', {}).values())
             learning_episodes = len(self.experience_replay_buffer)
             
-            # 计算平均预测准确率
-            if self.performance_metrics.get('prediction_accuracy'):
-                avg_prediction_accuracy = np.mean(list(self.performance_metrics['prediction_accuracy'].values()))
-            else:
-                avg_prediction_accuracy = 0.0
+            # 计算平均预测准确率 - 基于实际的学习经验
+            prediction_accuracies = []
+            for exp in self.experience_replay_buffer[-50:]:  # 最近50次经验
+                if hasattr(exp, 'reward') and hasattr(exp, 'success'):
+                    # 预测准确性 = 实际成功率与预期的匹配度
+                    expected_success = 1.0 if exp.reward > 0.5 else 0.0
+                    actual_success = 1.0 if exp.success else 0.0
+                    accuracy = 1.0 - abs(expected_success - actual_success)
+                    prediction_accuracies.append(accuracy)
+            
+            avg_prediction_accuracy = np.mean(prediction_accuracies) if prediction_accuracies else 0.0
             
             # 计算平均置信度
             avg_confidence = 0.0
@@ -1093,9 +1116,15 @@ class AdaptiveLearningTaskAllocator:
                 # 计算每个无人机的经验数量
                 drone_experience_count = len([exp for exp in self.experience_replay_buffer if exp.action == drone_id])
                 
-                # 获取探索效率技能等级 - 从学习能力中获取，如果没有则从基础能力获取
-                exploration_skill = (capabilities.learned_capabilities.get('exploration_efficiency', 0.0) + 
-                                   capabilities.base_capabilities.get('exploration_efficiency', 0.5))
+                # 获取探索效率技能等级 - 使用正确的键名
+                # 从学习能力和基础能力中获取，优先使用学习结果
+                exploration_learned = capabilities.learned_capabilities.get('exploration_efficiency', 
+                                    capabilities.learned_capabilities.get('endurance', 0.0))
+                exploration_base = capabilities.base_capabilities.get('exploration_efficiency',
+                                 capabilities.base_capabilities.get('endurance', 0.5))
+                
+                # 学习后的技能 = 基础技能 + 学习增益，但不超过1.0
+                exploration_skill = min(1.0, exploration_base + (exploration_learned - exploration_base) * 0.5)
                 
                 # 获取专长信息 - 从基础能力中找到最高的能力作为专长
                 specialization = 'general'
