@@ -990,7 +990,7 @@ class AdaptiveLearningTaskAllocator:
             # 计算适应率（基于最近的学习活动）
             recent_episodes = min(100, len(self.experience_replay_buffer))
             if recent_episodes > 0:
-                recent_performances = [exp['reward'] for exp in list(self.experience_replay_buffer)[-recent_episodes:]]
+                recent_performances = [exp.reward for exp in list(self.experience_replay_buffer)[-recent_episodes:]]
                 if len(recent_performances) > 10:
                     early_avg = np.mean(recent_performances[:10])
                     late_avg = np.mean(recent_performances[-10:])
@@ -1003,10 +1003,13 @@ class AdaptiveLearningTaskAllocator:
             # 无人机能力统计
             drone_capabilities_stats = {}
             for drone_id, capabilities in self.drone_capabilities.items():
+                # 计算每个无人机的经验数量
+                drone_experience_count = len([exp for exp in self.experience_replay_buffer if exp.action == drone_id])
+                
                 drone_capabilities_stats[str(drone_id)] = {
                     'exploration': {
                         'skill_level': capabilities.get('exploration_efficiency', 0.0),
-                        'experience_count': len([exp for exp in self.experience_replay_buffer if exp.get('drone_id') == drone_id])
+                        'experience_count': drone_experience_count
                     },
                     'specialization': capabilities.get('specialization', 'general'),
                     'total_tasks': self.performance_metrics.get('allocations', {}).get(drone_id, 0)
