@@ -655,14 +655,22 @@ class AdaptiveLearningTaskAllocator:
                        success: bool, final_state: Dict):
         """更新学习模型 - 核心学习函数"""
         with self.allocation_lock:
+            # 应用学习平滑化
+            if selected_drone in self.bandit_arms and self.bandit_arms[selected_drone]['rewards']:
+                smoothed_performance = self._apply_learning_smoothing(
+                    actual_performance, self.bandit_arms[selected_drone]['rewards'][-10:]
+                )
+            else:
+                smoothed_performance = actual_performance
+            
             # 1. 更新Q-learning
-            self._update_q_learning(task_id, selected_drone, actual_performance, final_state)
+            self._update_q_learning(task_id, selected_drone, smoothed_performance, final_state)
             
             # 2. 更新Multi-Armed Bandit
-            self._update_bandit_arms(selected_drone, actual_performance)
+            self._update_bandit_arms(selected_drone, smoothed_performance)
             
             # 3. 更新无人机能力模型
-            self._update_drone_capabilities(selected_drone, task_id, actual_performance, 
+            self._update_drone_capabilities(selected_drone, task_id, smoothed_performance, 
                                           task_duration, success)
             
             # 4. 更新经验回放缓存
@@ -675,8 +683,12 @@ class AdaptiveLearningTaskAllocator:
             # 6. 性能指标更新
             self._update_performance_metrics(success, actual_performance)
             
+            # 动态调整学习策略
+            self._update_learning_strategy()
+            
             print(f"Learning updated for Task {task_id}, Drone {selected_drone}, "
-                  f"Performance: {actual_performance:.3f}, Success: {success}")
+                  f"Performance: {actual_performance:.3f}, Success: {success}, "
+                  f"Strategy: {self.learning_strategy.value}, ε: {self.epsilon:.3f}")
     
     def _update_q_learning(self, task_id: str, selected_drone: int, 
                           reward: float, final_state: Dict):
@@ -1130,3 +1142,51 @@ class AdaptiveLearningTaskAllocator:
             self.performance_metrics['allocations'][drone_id] = 0
         
         self.performance_metrics['allocations'][drone_id] += 1
+    
+    def _update_learning_strategy(self):
+        """动态更新学习策略"""
+        total_episodes = len(self.experience_replay_buffer)
+        
+        # 基于学习进度动态选择策略
+        if total_episodes < 30:
+            # 初期：更多探索
+            self.learning_strategy = LearningStrategy.EPSILON_GREEDY
+            self.epsilon = max(0.2, self.epsilon)
+        elif total_episodes < 80:
+            # 中期：平衡探索和利用
+            self.learning_strategy = LearningStrategy.UCB
+            self.epsilon = max(0.15, self.epsilon * 0.998)
+        else:
+            # 后期：精细调优
+            self.learning_strategy = LearningStrategy.THOMPSON_SAMPLING
+            self.epsilon = max(0.1, self.epsilon * 0.998)
+    
+    def _apply_learning_smoothing(self, new_performance: float, historical_performances: List[float]) -> float:
+        """平滑学习更新，减少波动"""
+        if not historical_performances:
+            return new_performance
+        
+        # 指数移动平均
+        smoothing_factor = 0.7
+        recent_avg = np.mean(historical_performances[-5:])  # 最近5次的平均
+        smoothed_performance = smoothing_factor * recent_avg + (1 - smoothing_factor) * new_performance
+        
+        return smoothed_performance
+    
+    def _calculate_confidence(self, drone_id: int, task_context: Dict) -> float:
+        """计算分配置信度"""
+        if drone_id not in self.bandit_arms:
+            return 0.3  # 低置信度
+        
+        arm = self.bandit_arms[drone_id]
+        
+        # 基于选择次数和奖励估计计算置信度
+        if arm['selections'] == 0:
+            return 0.3
+        elif arm['selections'] < 5:
+            return 0.5  # 中等置信度
+        else:
+            # 基于奖励方差计算置信度
+            estimated_reward = arm['estimated_reward']
+            confidence = min(0.9, 0.3 + estimated_reward * 0.6)
+            return confidence
